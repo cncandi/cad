@@ -95,7 +95,7 @@ export class ViewerScene {
   }
 
   private _lights() {
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.60));
     const key = new THREE.DirectionalLight(0xffffff, 1.3);
     key.position.set(8, 14, 7);
     key.castShadow = true;
@@ -110,7 +110,7 @@ export class ViewerScene {
   }
 
   private _grid() {
-    this.scene.add(Object.assign(new THREE.GridHelper(30, 60, 0xb0b8c8, 0xc8d2dc), { position: { y: -0.01 } } as unknown));
+    this.scene.add(Object.assign(new THREE.GridHelper(30, 60, 0xa0a8b8, 0xc0c8d4), { position: { y: -0.01 } } as unknown));
     const ax = new THREE.AxesHelper(1.8);
     ax.position.set(-10, 0.02, -8);
     this.scene.add(ax);
