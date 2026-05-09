@@ -45,7 +45,6 @@ export function CadViewport() {
       if (!s) return;
       switch (e.key.toLowerCase()) {
         case 'q':      useCadStore.getState().setTransformSpace(useCadStore.getState().transformSpace === 'world' ? 'local' : 'world'); break;
-        case 'p':      s.startPivotMode(); break;
         case 'f':      s.focusSelection(); break;
         case 'escape': s.cancelDrag(); break;
         case 'shift':  useCadStore.getState().setSnapEnabled(false); break;
@@ -91,7 +90,7 @@ export function CadViewport() {
         borderRadius: 6, padding: '3px 12px',
         fontSize: 10, color: dark ? '#5a7090' : '#8898aa', whiteSpace: 'nowrap',
       }}>
-        Q Local/World · P Pivot · F Fokus · Esc Abbruch
+        Q Local/World · F Fokus · Esc Abbruch  ·  Gelb=Ecke  Cyan=Mitte  Orange=Fläche
       </div>
     </div>
   );
