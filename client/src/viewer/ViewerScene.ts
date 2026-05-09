@@ -215,15 +215,25 @@ export class ViewerScene {
         // Plane handles
         if (HIDE.has(obj.name)) { obj.visible = false; return; }
 
-        // Negative arrows: each arrow mesh carries the same name as its parent group (X/Y/Z)
-        // and sits at the negative position on that axis.
-        // Check the object's own position directly — no parent lookup needed.
-        const p = obj.position;
-        const neg =
-          (obj.name === 'X' && p.x < -0.05) ||
-          (obj.name === 'Y' && p.y < -0.05) ||
-          (obj.name === 'Z' && p.z < -0.05);
-        if (neg) obj.visible = false;
+        // setupGizmo() bakes position/rotation into geometry vertices, then resets
+        // object.position to (0,0,0). So we must check the geometry bounding box center.
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.geometry && (obj.name === 'X' || obj.name === 'Y' || obj.name === 'Z')) {
+            mesh.geometry.computeBoundingBox();
+            const bb = mesh.geometry.boundingBox;
+            if (bb) {
+              const cx = (bb.min.x + bb.max.x) / 2;
+              const cy = (bb.min.y + bb.max.y) / 2;
+              const cz = (bb.min.z + bb.max.z) / 2;
+              const neg =
+                (obj.name === 'X' && cx < -0.05) ||
+                (obj.name === 'Y' && cy < -0.05) ||
+                (obj.name === 'Z' && cz < -0.05);
+              if (neg) obj.visible = false;
+            }
+          }
+        }
       });
     };
 
