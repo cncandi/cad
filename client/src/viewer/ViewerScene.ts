@@ -332,4 +332,14 @@ export class ViewerScene {
   getDocument(): CadDocument {
     return this.cadDocument;
   }
+
+  setTheme(theme: 'light' | 'dark'): void {
+    if (theme === 'light') {
+      this.scene.background = new THREE.Color(0xe8edf3);
+      this.scene.fog = new THREE.Fog(0xe8edf3, 40, 100);
+    } else {
+      this.scene.background = new THREE.Color(0x0d1117);
+      this.scene.fog = new THREE.Fog(0x0d1117, 40, 100);
+    }
+  }
 }

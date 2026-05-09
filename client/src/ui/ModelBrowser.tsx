@@ -8,70 +8,46 @@ const BODIES = [
 ];
 
 export function ModelBrowser() {
-  const { selectedBodyId, selection, toggleBodyVisibility, bodyVisibility, setSelection } =
-    useCadStore();
+  const { selectedBodyId, selection, toggleBodyVisibility, bodyVisibility, setSelection } = useCadStore();
 
   return (
     <div style={{
       width: 220, height: '100%', overflow: 'auto',
-      background: '#13171d',
-      borderRight: '1px solid #1e2530',
+      background: 'var(--bg1)',
+      borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column',
     }}>
-      {/* Header */}
       <div style={{
-        padding: '8px 12px', fontSize: 11, fontWeight: 600,
-        color: '#4a6080', borderBottom: '1px solid #1e2530',
+        padding: '7px 12px', fontSize: 11, fontWeight: 600,
+        color: 'var(--text3)', borderBottom: '1px solid var(--border)',
         textTransform: 'uppercase', letterSpacing: '0.06em',
-      }}>
-        Model
-      </div>
+      }}>Model</div>
 
-      {/* Document root */}
-      <div style={{ padding: '6px 8px' }}>
-        <div style={{ fontSize: 12, color: '#5a7090', padding: '3px 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ padding: '6px 8px', flex: 1 }}>
+        <div style={{ fontSize: 12, color: 'var(--text2)', padding: '3px 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
           <ChevronRight size={12} />
           <span>Demo Assembly</span>
         </div>
-
         <div style={{ paddingLeft: 12, marginTop: 2 }}>
-          <div style={{ fontSize: 11, color: '#3d5068', padding: '2px 4px', marginBottom: 2 }}>
-            Bodies
-          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', padding: '2px 4px', marginBottom: 2 }}>Bodies</div>
           {BODIES.map((body) => {
             const isSelected = selectedBodyId === body.id || selection?.bodyId === body.id;
             const visible = bodyVisibility[body.id] !== false;
             return (
-              <div
-                key={body.id}
-                onClick={() =>
-                  setSelection(isSelected ? null : { type: 'body', bodyId: body.id })
-                }
+              <div key={body.id}
+                onClick={() => setSelection(isSelected ? null : { type: 'body', bodyId: body.id })}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '4px 6px', borderRadius: 4, cursor: 'pointer',
-                  background: isSelected ? '#1a3050' : 'transparent',
+                  background: isSelected ? 'var(--sel)' : 'transparent',
                   marginBottom: 1,
-                }}
-              >
-                <Box size={13} color={isSelected ? '#60a5fa' : '#4a6080'} />
-                <span style={{
-                  flex: 1, fontSize: 12,
-                  color: isSelected ? '#90c4f8' : '#7a9ab8',
                 }}>
+                <Box size={13} color={isSelected ? 'var(--accent)' : 'var(--text3)'} />
+                <span style={{ flex: 1, fontSize: 12, color: isSelected ? 'var(--sel-text)' : 'var(--text2)' }}>
                   {body.name}
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleBodyVisibility(body.id);
-                  }}
-                  style={{
-                    background: 'transparent', border: 'none',
-                    cursor: 'pointer', color: visible ? '#4a6080' : '#2a3a50',
-                    padding: 0, display: 'flex',
-                  }}
-                >
+                <button onClick={(e) => { e.stopPropagation(); toggleBodyVisibility(body.id); }}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: visible ? 'var(--text3)' : 'var(--border2)', padding: 0, display: 'flex' }}>
                   {visible ? <Eye size={12} /> : <EyeOff size={12} />}
                 </button>
               </div>
