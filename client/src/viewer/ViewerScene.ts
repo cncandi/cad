@@ -161,6 +161,9 @@ export class ViewerScene {
     this._bindTC(this.tcT, this.tcR);
     this._bindTC(this.tcR, this.tcT);
 
+    // Remove plane handles + negative arrows from translate gizmo
+    this._simplifyTranslateGizmo();
+
     // Snap visuals
     this.snapDot = new THREE.Mesh(
       new THREE.SphereGeometry(1, 12, 12),
@@ -197,6 +200,30 @@ export class ViewerScene {
   }
 
   // ─── TC binding ──────────────────────────────────────────────────────────────
+
+  // Hide TC translate plane handles and negative-direction arrows
+  private _simplifyTranslateGizmo(): void {
+    const helper = this.tcT.getHelper();
+    helper.traverse((obj) => {
+      // Plane handles (squares between axes)
+      if (['XY', 'XZ', 'YZ', 'XYZ', 'XYZE'].includes(obj.name)) {
+        obj.visible = false;
+      }
+      // Negative-direction arrows: children of X/Y/Z groups
+      // positioned on the negative side of their axis
+      if (obj.name === 'X' || obj.name === 'Y' || obj.name === 'Z') {
+        obj.children.forEach(child => {
+          const p = (child as THREE.Object3D).position;
+          const neg =
+            (obj.name === 'X' && p.x < -0.05) ||
+            (obj.name === 'Y' && p.y < -0.05) ||
+            (obj.name === 'Z' && p.z < -0.05);
+          if (neg) (child as THREE.Object3D).visible = false;
+        });
+      }
+    });
+  }
+
   private _bindTC(tc: TransformControls, other: TransformControls) {
     tc.addEventListener('dragging-changed', (e) => {
       const on = (e as unknown as { value: boolean }).value;
