@@ -5,51 +5,27 @@ import { useCadStore } from '../app/cadStore';
 
 export function CadViewport() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sceneRef = useRef<ViewerScene | null>(null);
-
-  const {
-    transformMode,
-    transformSpace,
-    snapEnabled,
-    bodyVisibility,
-    theme,
-    setSelection,
-    addOperation,
-    setPosition,
-    setRotation,
-  } = useCadStore();
+  const sceneRef  = useRef<ViewerScene | null>(null);
+  const { transformSpace, snapEnabled, bodyVisibility, theme, setSelection, addOperation, setPosition, setRotation } = useCadStore();
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const scene = new ViewerScene(canvas, {
-      onBodySelected: (bodyId, position) => {
-        if (bodyId) {
-          setSelection({ type: 'body', bodyId });
-          setPosition(position);
-        } else {
-          setSelection(null);
-          setPosition([0, 0, 0]);
-          setRotation([0, 0, 0]);
-        }
+      onBodySelected: (id, pos) => {
+        if (id) { setSelection({ type: 'body', bodyId: id }); setPosition(pos); }
+        else    { setSelection(null); setPosition([0,0,0]); setRotation([0,0,0]); }
       },
-      onTransformCommit: (bodyId, matrix, pos, rot) => {
-        const { getHistory } = scene.getDocument();
-        // Op already written in ViewerScene via cadDocument.commitTransform
-        const op = scene.getDocument().commitTransform(bodyId, new THREE.Matrix4().fromArray(matrix));
+      onTransformCommit: (id, mat, pos, rot) => {
+        const op = scene.getDocument().commitTransform(id, new THREE.Matrix4().fromArray(mat));
         addOperation(op);
-        setPosition([
-          parseFloat(pos.x.toFixed(3)),
-          parseFloat(pos.y.toFixed(3)),
-          parseFloat(pos.z.toFixed(3)),
-        ]);
+        setPosition([+pos.x.toFixed(3), +pos.y.toFixed(3), +pos.z.toFixed(3)]);
         setRotation([
-          parseFloat(THREE.MathUtils.radToDeg(rot.x).toFixed(2)),
-          parseFloat(THREE.MathUtils.radToDeg(rot.y).toFixed(2)),
-          parseFloat(THREE.MathUtils.radToDeg(rot.z).toFixed(2)),
+          +THREE.MathUtils.radToDeg(rot.x).toFixed(2),
+          +THREE.MathUtils.radToDeg(rot.y).toFixed(2),
+          +THREE.MathUtils.radToDeg(rot.z).toFixed(2),
         ]);
-        void getHistory;
       },
       onPositionChange: setPosition,
       onRotationChange: setRotation,
@@ -57,108 +33,65 @@ export function CadViewport() {
 
     sceneRef.current = scene;
 
-    // Resize observer
-    const observer = new ResizeObserver((entries) => {
+    const ro = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
       scene.resize(width, height);
     });
-    observer.observe(canvas.parentElement!);
-    const parent = canvas.parentElement!;
-    scene.resize(parent.clientWidth, parent.clientHeight);
+    ro.observe(canvas.parentElement!);
+    scene.resize(canvas.parentElement!.clientWidth, canvas.parentElement!.clientHeight);
 
-    // Keyboard shortcuts
     const onKey = (e: KeyboardEvent) => {
-      if (!sceneRef.current) return;
+      const s = sceneRef.current;
+      if (!s) return;
       switch (e.key.toLowerCase()) {
-        case 'w':
-          useCadStore.getState().setTransformMode('translate');
-          break;
-        case 'e':
-          useCadStore.getState().setTransformMode('rotate');
-          break;
-        case 'q':
-          useCadStore.getState().setTransformSpace(
-            useCadStore.getState().transformSpace === 'world' ? 'local' : 'world'
-          );
-          break;
-        case 'f':
-          sceneRef.current.focusSelection();
-          break;
-        case 'escape':
-          sceneRef.current.cancelDrag();
-          break;
-        case 'shift':
-          useCadStore.getState().setSnapEnabled(false);
-          break;
+        case 'q':      useCadStore.getState().setTransformSpace(useCadStore.getState().transformSpace === 'world' ? 'local' : 'world'); break;
+        case 'p':      s.startPivotMode(); break;
+        case 'f':      s.focusSelection(); break;
+        case 'escape': s.cancelDrag(); break;
+        case 'shift':  useCadStore.getState().setSnapEnabled(false); break;
       }
     };
-
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') {
-        useCadStore.getState().setSnapEnabled(true);
-      }
+      if (e.key === 'Shift') useCadStore.getState().setSnapEnabled(true);
     };
-
     window.addEventListener('keydown', onKey);
-    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('keyup',   onKeyUp);
 
     return () => {
       scene.dispose();
-      observer.disconnect();
+      ro.disconnect();
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('keyup',   onKeyUp);
     };
   }, []);
 
-  // Sync store → scene
+  useEffect(() => { sceneRef.current?.setTransformSpace(transformSpace); }, [transformSpace]);
+  useEffect(() => { sceneRef.current?.setSnapEnabled(snapEnabled); }, [snapEnabled]);
   useEffect(() => {
-    sceneRef.current?.setTransformMode(transformMode);
-  }, [transformMode]);
-
-  useEffect(() => {
-    sceneRef.current?.setTransformSpace(transformSpace);
-  }, [transformSpace]);
-
-  useEffect(() => {
-    sceneRef.current?.setSnapEnabled(snapEnabled);
-  }, [snapEnabled]);
-
+    Object.entries(bodyVisibility).forEach(([id, v]) => sceneRef.current?.setBodyVisibility(id, v));
+  }, [bodyVisibility]);
   useEffect(() => { sceneRef.current?.setTheme(theme); }, [theme]);
 
-  useEffect(() => {
-    Object.entries(bodyVisibility).forEach(([id, visible]) => {
-      sceneRef.current?.setBodyVisibility(id, visible);
-    });
-  }, [bodyVisibility]);
-
+  const dark = theme === 'dark';
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-      <canvas
-        ref={canvasRef}
-        style={{ display: 'block', width: '100%', height: '100%' }}
-      />
-      {/* ViewCube placeholder */}
+    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: dark ? '#0d1117' : '#e8edf3' }}>
+      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
       <div style={{
         position: 'absolute', top: 12, right: 12,
-        width: 64, height: 64, borderRadius: 8,
-        background: 'rgba(30,34,40,0.75)',
-        border: '1px solid #2d3748',
+        width: 62, height: 62, borderRadius: 8,
+        background: dark ? 'rgba(22,27,34,0.85)' : 'rgba(255,255,255,0.85)',
+        border: `1px solid ${dark ? '#2a3347' : '#d0d8e4'}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 10, color: '#8899aa', userSelect: 'none',
-      }}>
-        VIEW CUBE
-      </div>
-
-      {/* Mini toolbar */}
+        fontSize: 9, color: dark ? '#5a7090' : '#8898aa', userSelect: 'none',
+      }}>VIEW CUBE</div>
       <div style={{
-        position: 'absolute', bottom: 40, left: '50%', transform: 'translateX(-50%)',
-        background: 'rgba(22,26,32,0.92)',
-        border: '1px solid #2d3748',
-        borderRadius: 8, padding: '4px 12px',
-        fontSize: 11, color: '#8899aa',
-        userSelect: 'none',
+        position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+        background: dark ? 'rgba(13,17,23,0.85)' : 'rgba(255,255,255,0.85)',
+        border: `1px solid ${dark ? '#2a3347' : '#d0d8e4'}`,
+        borderRadius: 6, padding: '3px 12px',
+        fontSize: 10, color: dark ? '#5a7090' : '#8898aa', whiteSpace: 'nowrap',
       }}>
-        W Move · E Rotate · Q Local/World · Shift=Snap off · F Fokus · Esc Deselect
+        Q Local/World · P Pivot · F Fokus · Esc Abbruch
       </div>
     </div>
   );
