@@ -17,8 +17,12 @@ export interface SceneCallbacks {
 // ─── Snap ─────────────────────────────────────────────────────────────────────
 type SnapType = 'vertex' | 'midpoint' | 'center';
 interface SnapPt { p: THREE.Vector3; t: SnapType; }
-const SNAP_COL: Record<SnapType, number> = { vertex: 0xffcc00, midpoint: 0x00ccff, center: 0xff8800 };
-const SNAP_PX = 28;
+const SNAP_COL: Record<SnapType, number> = {
+  vertex:   0xffcc00,
+  midpoint: 0x00ccff,
+  center:   0xff8800,
+};
+const SNAP_PX = 24; // screen-pixel radius for snap detection
 
 function buildSnaps(mesh: THREE.Mesh): SnapPt[] {
   const out: SnapPt[] = [];
@@ -43,12 +47,12 @@ function buildSnaps(mesh: THREE.Mesh): SnapPt[] {
     wv.push(v);
   }
   for (let i = 0; i < count; i += 3) {
-    const a = wv[i], b = wv[i+1], c = wv[i+2];
+    const a = wv[i], b = wv[i + 1], c = wv[i + 2];
     if (!a || !b || !c) continue;
-    add(a.clone().add(b).multiplyScalar(0.5),     'midpoint');
-    add(b.clone().add(c).multiplyScalar(0.5),     'midpoint');
-    add(c.clone().add(a).multiplyScalar(0.5),     'midpoint');
-    add(a.clone().add(b).add(c).divideScalar(3),  'center');
+    add(a.clone().add(b).multiplyScalar(0.5),    'midpoint');
+    add(b.clone().add(c).multiplyScalar(0.5),    'midpoint');
+    add(c.clone().add(a).multiplyScalar(0.5),    'midpoint');
+    add(a.clone().add(b).add(c).divideScalar(3), 'center');
   }
   return out;
 }
@@ -59,8 +63,8 @@ export class ViewerScene {
   private scene:    THREE.Scene;
   private camera:   THREE.PerspectiveCamera;
   private orbit:    OrbitControls;
-  private tcT:      TransformControls;  // translate arrows
-  private tcR:      TransformControls;  // rotate rings (smaller)
+  private tcT:      TransformControls;
+  private tcR:      TransformControls;
   private anchor:   THREE.Object3D;
 
   private meshMap = new Map<string, THREE.Mesh>();
@@ -70,24 +74,18 @@ export class ViewerScene {
   private selId:   string | null = null;
   private frameId  = 0;
 
-  // Drag state shared across both TCs
+  // Drag state
   private mat0: THREE.Matrix4 | null = null;
   private sel0: THREE.Matrix4 | null = null;
 
-  // Ring-click detection: click without drag → pivot reposition
-  private ringDown: { x: number; y: number } | null = null;
-  private ringDragged = false;
-
-  // KEY FIX: flag set by TC mouseDown so _onPointerDown knows TC is handling this click
+  // TC handled-flag: prevents _onPointerDown from deselecting when TC grabs a handle
   private tcHandled = false;
 
-  // Snap visuals
+  // Snap
   private allSnaps:   SnapPt[] = [];
   private snapActive: SnapPt | null = null;
   private snapDot:    THREE.Mesh;
   private snapRing:   THREE.Mesh;
-  private ptrX = 0;
-  private ptrY = 0;
 
   constructor(canvas: HTMLCanvasElement, cbs: SceneCallbacks) {
     this.cbs = cbs;
@@ -133,14 +131,14 @@ export class ViewerScene {
     ax.position.set(-8, 0, -6);
     this.scene.add(ax);
 
-    // Orbit controls
+    // Orbit
     this.orbit = new OrbitControls(this.camera, canvas);
     this.orbit.enableDamping = true;
     this.orbit.dampingFactor = 0.08;
     this.orbit.minDistance   = 1;
     this.orbit.maxDistance   = 80;
 
-    // Anchor (invisible pivot for gizmos)
+    // Anchor
     this.anchor = new THREE.Object3D();
     this.scene.add(this.anchor);
 
@@ -151,7 +149,7 @@ export class ViewerScene {
     this.tcT.getHelper().visible = false;
     this.scene.add(this.tcT.getHelper());
 
-    // Rotate gizmo — smaller rings
+    // Rotate gizmo – smaller rings
     this.tcR = new TransformControls(this.camera, canvas);
     this.tcR.setMode('rotate');
     this.tcR.size = 0.55;
@@ -159,10 +157,9 @@ export class ViewerScene {
     this.tcR.getHelper().visible = false;
     this.scene.add(this.tcR.getHelper());
 
-    // Bind TC events BEFORE adding own canvas listeners
-    // (TC adds its listeners in constructor above, so TC fires before ours in bubbling)
-    this._bindTC(this.tcT, this.tcR, false);
-    this._bindTC(this.tcR, this.tcT, true);
+    // Bind TC events (must happen before adding own canvas listeners)
+    this._bindTC(this.tcT, this.tcR);
+    this._bindTC(this.tcR, this.tcT);
 
     // Snap visuals
     this.snapDot = new THREE.Mesh(
@@ -179,12 +176,11 @@ export class ViewerScene {
     this.snapRing.renderOrder = 998;
     this.scene.add(this.snapRing);
 
-    // Canvas listeners — normal bubbling (AFTER TC listeners)
-    // TC fires first → sets this.tcHandled = true → _onPointerDown skips body selection
+    // Canvas listeners (normal bubbling — TC fires first)
     canvas.addEventListener('pointermove', this._onPointerMove);
     canvas.addEventListener('pointerdown', this._onPointerDown);
 
-    // Demo geometry
+    // Demo scene
     const adapter = new DemoCadAdapter();
     this.doc = adapter.createDemoDocument();
     for (const body of this.doc.bodies) {
@@ -200,8 +196,8 @@ export class ViewerScene {
     this._loop();
   }
 
-  // ─── TC binding ─────────────────────────────────────────────────────────────
-  private _bindTC(tc: TransformControls, other: TransformControls, isRotate: boolean) {
+  // ─── TC binding ──────────────────────────────────────────────────────────────
+  private _bindTC(tc: TransformControls, other: TransformControls) {
     tc.addEventListener('dragging-changed', (e) => {
       const on = (e as unknown as { value: boolean }).value;
       this.orbit.enabled = !on;
@@ -209,17 +205,10 @@ export class ViewerScene {
     });
 
     tc.addEventListener('mouseDown', () => {
-      // Tell _onPointerDown that TC is handling this event → skip body selection
       this.tcHandled = true;
-
       this.mat0 = this.anchor.matrixWorld.clone();
       const m   = this.selId ? this.meshMap.get(this.selId) : null;
       this.sel0 = m ? m.matrixWorld.clone() : null;
-
-      if (isRotate) {
-        this.ringDown    = { x: this.ptrX, y: this.ptrY };
-        this.ringDragged = false;
-      }
     });
 
     tc.addEventListener('objectChange', () => {
@@ -227,8 +216,6 @@ export class ViewerScene {
       const mesh  = this.meshMap.get(this.selId);
       const edges = this.edgeMap.get(this.selId);
       if (!mesh) return;
-
-      if (isRotate) this.ringDragged = true; // TC fired objectChange → real drag
 
       const delta = this.anchor.matrixWorld.clone().multiply(this.mat0.clone().invert());
       mesh.matrix.copy(delta.multiply(this.sel0));
@@ -252,29 +239,16 @@ export class ViewerScene {
 
     tc.addEventListener('mouseUp', () => {
       if (!this.selId || !this.mat0) return;
-
-      // Ring-click detection: use actual pointer travel distance (reliable)
-      if (isRotate && this.ringDown) {
-        const dist = Math.hypot(this.ptrX - this.ringDown.x, this.ptrY - this.ringDown.y);
-        if (dist < 6 && this.snapActive) {
-          // Short click on ring with snap point active → reposition pivot
-          this.anchor.position.copy(this.snapActive.p);
-          this.anchor.updateMatrixWorld(true);
-          this.mat0 = this.sel0 = this.ringDown = null;
-          return;
-        }
-      }
-
       const delta = this.anchor.matrixWorld.clone().multiply(this.mat0.clone().invert());
       const mesh  = this.meshMap.get(this.selId);
       const p     = mesh ? new THREE.Vector3().setFromMatrixPosition(mesh.matrix) : new THREE.Vector3();
       const r     = mesh ? new THREE.Euler().setFromRotationMatrix(mesh.matrix)   : new THREE.Euler();
       this.cbs.onTransformCommit(this.selId, delta.toArray(), p, r);
-      this.mat0 = this.sel0 = this.ringDown = null;
+      this.mat0 = this.sel0 = null;
     });
   }
 
-  // ─── Snap ───────────────────────────────────────────────────────────────────
+  // ─── Snap ────────────────────────────────────────────────────────────────────
   private _rebuildSnaps() {
     this.allSnaps = [];
     this.meshMap.forEach(mesh => {
@@ -289,6 +263,7 @@ export class ViewerScene {
   }
 
   private _nearestSnap(sx: number, sy: number): SnapPt | null {
+    if (!this.selId) return null; // only when gimbal active
     let best: SnapPt | null = null;
     let bestD = SNAP_PX;
     for (const sp of this.allSnaps) {
@@ -303,8 +278,8 @@ export class ViewerScene {
     const col = new THREE.Color(SNAP_COL[sp.t]);
     const dm  = this.snapDot.material  as THREE.MeshBasicMaterial;
     const rm  = this.snapRing.material as THREE.MeshBasicMaterial;
-    dm.color.copy(col);  dm.opacity = 0.55;
-    rm.color.copy(col);  rm.opacity = 0.30;
+    dm.color.copy(col); dm.opacity = 0.55;
+    rm.color.copy(col); rm.opacity = 0.30;
     this.snapDot.position.copy(sp.p);
     this.snapRing.position.copy(sp.p);
     this.snapRing.quaternion.copy(this.camera.quaternion);
@@ -319,21 +294,12 @@ export class ViewerScene {
     this.snapActive = null;
   }
 
-  // ─── Pointer handlers ────────────────────────────────────────────────────────
+  // ─── Pointer events ───────────────────────────────────────────────────────────
   private _onPointerMove = (e: PointerEvent) => {
     const rect = this.renderer.domElement.getBoundingClientRect();
-    this.ptrX  = e.clientX - rect.left;
-    this.ptrY  = e.clientY - rect.top;
-
-    // Track drag distance for ring-click detection
-    if (this.ringDown) {
-      const d = Math.hypot(this.ptrX - this.ringDown.x, this.ptrY - this.ringDown.y);
-      if (d > 5) this.ringDragged = true;
-    }
-
-    // Only show snap points when gimbal is active (body selected)
-    if (!this.selId) { this._hideSnap(); return; }
-    const snap = this._nearestSnap(this.ptrX, this.ptrY);
+    const sx   = e.clientX - rect.left;
+    const sy   = e.clientY - rect.top;
+    const snap = this._nearestSnap(sx, sy);
     this.snapActive = snap;
     if (snap) this._showSnap(snap); else this._hideSnap();
   };
@@ -341,22 +307,34 @@ export class ViewerScene {
   private _onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
 
-    // TC already handled this mousedown (fired first via its own listener)
+    // TC grabbed a gizmo handle — skip everything else
     if (this.tcHandled) {
       this.tcHandled = false;
       return;
     }
 
-    // Body selection via raycaster
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc  = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width)  *  2 - 1,
-      ((e.clientY - rect.top)  / rect.height) * -2 + 1,
+    const sx   = e.clientX - rect.left;
+    const sy   = e.clientY - rect.top;
+
+    // ── Click on active snap point → reposition gimbal pivot ──────────────
+    if (this.snapActive && this.selId) {
+      const [px, py] = this._toScreen(this.snapActive.p);
+      if (Math.hypot(sx - px, sy - py) < SNAP_PX) {
+        this.anchor.position.copy(this.snapActive.p);
+        this.anchor.updateMatrixWorld(true);
+        return; // done — don't deselect
+      }
+    }
+
+    // ── Body selection ─────────────────────────────────────────────────────
+    const ndc = new THREE.Vector2(
+      (sx / this.renderer.domElement.clientWidth)  *  2 - 1,
+      (sy / this.renderer.domElement.clientHeight) * -2 + 1,
     );
     const rc   = new THREE.Raycaster();
     rc.setFromCamera(ndc, this.camera);
     const hits = rc.intersectObjects([...this.meshMap.values()], false);
-
     if (hits.length) {
       const id = hits[0].object.userData['bodyId'] as string | undefined;
       if (id) { this._select(id); return; }
@@ -364,7 +342,7 @@ export class ViewerScene {
     this._select(null);
   };
 
-  // ─── Selection ───────────────────────────────────────────────────────────────
+  // ─── Selection ────────────────────────────────────────────────────────────────
   private _select(id: string | null) {
     if (this.selId) {
       const m = this.meshMap.get(this.selId);
@@ -391,7 +369,7 @@ export class ViewerScene {
     }
   }
 
-  // ─── Public API ──────────────────────────────────────────────────────────────
+  // ─── Public API ───────────────────────────────────────────────────────────────
   setTransformMode(_m: string) { /* both always visible */ }
 
   setTransformSpace(s: TransformSpace) {
