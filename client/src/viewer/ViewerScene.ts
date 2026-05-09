@@ -299,12 +299,12 @@ export class ViewerScene {
     const col = new THREE.Color(SNAP_COL[sp.t]);
     const dm  = this.snapDot.material  as THREE.MeshBasicMaterial;
     const rm  = this.snapRing.material as THREE.MeshBasicMaterial;
-    dm.color.copy(col);  dm.opacity = 0.95;
-    rm.color.copy(col);  rm.opacity = 0.70;
+    dm.color.copy(col);  dm.opacity = 0.55;
+    rm.color.copy(col);  rm.opacity = 0.30;
     this.snapDot.position.copy(sp.p);
     this.snapRing.position.copy(sp.p);
     this.snapRing.quaternion.copy(this.camera.quaternion);
-    const s = this.camera.position.distanceTo(sp.p) * 0.038;
+    const s = this.camera.position.distanceTo(sp.p) * 0.018;
     this.snapDot.scale.setScalar(s);
     this.snapRing.scale.setScalar(s);
   }
@@ -327,7 +327,8 @@ export class ViewerScene {
       if (d > 5) this.ringDragged = true;
     }
 
-    // Always show snap points on hover
+    // Only show snap points when gimbal is active (body selected)
+    if (!this.selId) { this._hideSnap(); return; }
     const snap = this._nearestSnap(this.ptrX, this.ptrY);
     this.snapActive = snap;
     if (snap) this._showSnap(snap); else this._hideSnap();
