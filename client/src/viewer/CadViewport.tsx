@@ -5,12 +5,18 @@ import { useCadStore } from '../app/cadStore';
 
 export function CadViewport() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sceneRef  = useRef<ViewerScene | null>(null);
+  const sceneRef = useRef<ViewerScene | null>(null);
 
   const {
-    transformMode, transformSpace, snapEnabled,
-    bodyVisibility, theme,
-    setSelection, addOperation, setPosition, setRotation,
+    transformMode,
+    transformSpace,
+    snapEnabled,
+    bodyVisibility,
+    theme,
+    setSelection,
+    addOperation,
+    setPosition,
+    setRotation,
   } = useCadStore();
 
   useEffect(() => {
@@ -19,21 +25,31 @@ export function CadViewport() {
 
     const scene = new ViewerScene(canvas, {
       onBodySelected: (bodyId, position) => {
-        if (bodyId) { setSelection({ type: 'body', bodyId }); setPosition(position); }
-        else { setSelection(null); setPosition([0,0,0]); setRotation([0,0,0]); }
-      },
-      onFaceSelected: (bodyId, _faceIndex, _normal) => {
-        setSelection({ type: 'face', bodyId });
+        if (bodyId) {
+          setSelection({ type: 'body', bodyId });
+          setPosition(position);
+        } else {
+          setSelection(null);
+          setPosition([0, 0, 0]);
+          setRotation([0, 0, 0]);
+        }
       },
       onTransformCommit: (bodyId, matrix, pos, rot) => {
+        const { getHistory } = scene.getDocument();
+        // Op already written in ViewerScene via cadDocument.commitTransform
         const op = scene.getDocument().commitTransform(bodyId, new THREE.Matrix4().fromArray(matrix));
         addOperation(op);
-        setPosition([+pos.x.toFixed(3), +pos.y.toFixed(3), +pos.z.toFixed(3)]);
-        setRotation([
-          +THREE.MathUtils.radToDeg(rot.x).toFixed(2),
-          +THREE.MathUtils.radToDeg(rot.y).toFixed(2),
-          +THREE.MathUtils.radToDeg(rot.z).toFixed(2),
+        setPosition([
+          parseFloat(pos.x.toFixed(3)),
+          parseFloat(pos.y.toFixed(3)),
+          parseFloat(pos.z.toFixed(3)),
         ]);
+        setRotation([
+          parseFloat(THREE.MathUtils.radToDeg(rot.x).toFixed(2)),
+          parseFloat(THREE.MathUtils.radToDeg(rot.y).toFixed(2)),
+          parseFloat(THREE.MathUtils.radToDeg(rot.z).toFixed(2)),
+        ]);
+        void getHistory;
       },
       onPositionChange: setPosition,
       onRotationChange: setRotation,
@@ -41,29 +57,48 @@ export function CadViewport() {
 
     sceneRef.current = scene;
 
-    const observer = new ResizeObserver(entries => {
+    // Resize observer
+    const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
       scene.resize(width, height);
     });
     observer.observe(canvas.parentElement!);
-    scene.resize(canvas.parentElement!.clientWidth, canvas.parentElement!.clientHeight);
+    const parent = canvas.parentElement!;
+    scene.resize(parent.clientWidth, parent.clientHeight);
 
+    // Keyboard shortcuts
     const onKey = (e: KeyboardEvent) => {
-      const s = sceneRef.current;
-      if (!s) return;
+      if (!sceneRef.current) return;
       switch (e.key.toLowerCase()) {
-        case 'w':      useCadStore.getState().setTransformMode('translate'); break;
-        case 'e':      useCadStore.getState().setTransformMode('rotate'); break;
-        case 'q':      useCadStore.getState().setTransformSpace(
-                         useCadStore.getState().transformSpace === 'world' ? 'local' : 'world'); break;
-        case 'f':      s.focusSelection(); break;
-        case 'escape': s.cancelDrag(); break;
-        case 'shift':  useCadStore.getState().setSnapEnabled(false); break;
+        case 'w':
+          useCadStore.getState().setTransformMode('translate');
+          break;
+        case 'e':
+          useCadStore.getState().setTransformMode('rotate');
+          break;
+        case 'q':
+          useCadStore.getState().setTransformSpace(
+            useCadStore.getState().transformSpace === 'world' ? 'local' : 'world'
+          );
+          break;
+        case 'f':
+          sceneRef.current.focusSelection();
+          break;
+        case 'escape':
+          sceneRef.current.cancelDrag();
+          break;
+        case 'shift':
+          useCadStore.getState().setSnapEnabled(false);
+          break;
       }
     };
+
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') useCadStore.getState().setSnapEnabled(true);
+      if (e.key === 'Shift') {
+        useCadStore.getState().setSnapEnabled(true);
+      }
     };
+
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
 
@@ -75,38 +110,55 @@ export function CadViewport() {
     };
   }, []);
 
-  useEffect(() => { sceneRef.current?.setTransformMode(transformMode); }, [transformMode]);
-  useEffect(() => { sceneRef.current?.setTransformSpace(transformSpace); }, [transformSpace]);
-  useEffect(() => { sceneRef.current?.setSnapEnabled(snapEnabled); }, [snapEnabled]);
+  // Sync store → scene
   useEffect(() => {
-    Object.entries(bodyVisibility).forEach(([id, v]) => sceneRef.current?.setBodyVisibility(id, v));
-  }, [bodyVisibility]);
+    sceneRef.current?.setTransformMode(transformMode);
+  }, [transformMode]);
+
+  useEffect(() => {
+    sceneRef.current?.setTransformSpace(transformSpace);
+  }, [transformSpace]);
+
+  useEffect(() => {
+    sceneRef.current?.setSnapEnabled(snapEnabled);
+  }, [snapEnabled]);
+
   useEffect(() => { sceneRef.current?.setTheme(theme); }, [theme]);
 
-  const isDark = theme === 'dark';
+  useEffect(() => {
+    Object.entries(bodyVisibility).forEach(([id, visible]) => {
+      sceneRef.current?.setBodyVisibility(id, visible);
+    });
+  }, [bodyVisibility]);
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden',
-      background: isDark ? '#0d1117' : '#e8edf3' }}>
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
-
+    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+      <canvas
+        ref={canvasRef}
+        style={{ display: 'block', width: '100%', height: '100%' }}
+      />
+      {/* ViewCube placeholder */}
       <div style={{
         position: 'absolute', top: 12, right: 12,
-        width: 62, height: 62, borderRadius: 8,
-        background: isDark ? 'rgba(22,27,34,0.85)' : 'rgba(255,255,255,0.85)',
-        border: `1px solid ${isDark ? '#2a3347' : '#d0d8e4'}`,
+        width: 64, height: 64, borderRadius: 8,
+        background: 'rgba(30,34,40,0.75)',
+        border: '1px solid #2d3748',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 9, color: isDark ? '#5a7090' : '#8898aa', userSelect: 'none',
-      }}>VIEW CUBE</div>
-
-      <div style={{
-        position: 'absolute', bottom: 38, left: '50%', transform: 'translateX(-50%)',
-        background: isDark ? 'rgba(13,17,23,0.85)' : 'rgba(255,255,255,0.85)',
-        border: `1px solid ${isDark ? '#2a3347' : '#d0d8e4'}`,
-        borderRadius: 6, padding: '3px 12px',
-        fontSize: 10, color: isDark ? '#5a7090' : '#8898aa', whiteSpace: 'nowrap',
+        fontSize: 10, color: '#8899aa', userSelect: 'none',
       }}>
-        Klick=Body · Klick auf Fläche=Face+Pull · W Move · E Rotate · Q Local/World · F Fokus · Esc Abbruch
+        VIEW CUBE
+      </div>
+
+      {/* Mini toolbar */}
+      <div style={{
+        position: 'absolute', bottom: 40, left: '50%', transform: 'translateX(-50%)',
+        background: 'rgba(22,26,32,0.92)',
+        border: '1px solid #2d3748',
+        borderRadius: 8, padding: '4px 12px',
+        fontSize: 11, color: '#8899aa',
+        userSelect: 'none',
+      }}>
+        W Move · E Rotate · Q Local/World · Shift=Snap off · F Fokus · Esc Deselect
       </div>
     </div>
   );
