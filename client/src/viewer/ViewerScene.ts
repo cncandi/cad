@@ -228,7 +228,7 @@ export class ViewerScene {
       const edges = this.edgeMap.get(this.selId);
       if (!mesh) return;
 
-      if (isRotate) this.ringDragged = true;
+      if (isRotate) this.ringDragged = true; // TC fired objectChange → real drag
 
       const delta = this.anchor.matrixWorld.clone().multiply(this.mat0.clone().invert());
       mesh.matrix.copy(delta.multiply(this.sel0));
@@ -253,12 +253,16 @@ export class ViewerScene {
     tc.addEventListener('mouseUp', () => {
       if (!this.selId || !this.mat0) return;
 
-      // Ring clicked without dragging + snap point active → reposition pivot
-      if (isRotate && !this.ringDragged && this.snapActive) {
-        this.anchor.position.copy(this.snapActive.p);
-        this.anchor.updateMatrixWorld(true);
-        this.mat0 = this.sel0 = this.ringDown = null;
-        return;
+      // Ring-click detection: use actual pointer travel distance (reliable)
+      if (isRotate && this.ringDown) {
+        const dist = Math.hypot(this.ptrX - this.ringDown.x, this.ptrY - this.ringDown.y);
+        if (dist < 6 && this.snapActive) {
+          // Short click on ring with snap point active → reposition pivot
+          this.anchor.position.copy(this.snapActive.p);
+          this.anchor.updateMatrixWorld(true);
+          this.mat0 = this.sel0 = this.ringDown = null;
+          return;
+        }
       }
 
       const delta = this.anchor.matrixWorld.clone().multiply(this.mat0.clone().invert());
