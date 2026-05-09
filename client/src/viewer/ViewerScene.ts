@@ -215,16 +215,14 @@ export class ViewerScene {
         // Plane handles
         if (HIDE.has(obj.name)) { obj.visible = false; return; }
 
-        // Negative arrows: mesh/line children whose local position is on the negative axis
-        const parent = obj.parent;
-        if (!parent) return;
-        const pn = parent.name;
-        if (pn !== 'X' && pn !== 'Y' && pn !== 'Z') return;
-        const p  = obj.position;
+        // Negative arrows: each arrow mesh carries the same name as its parent group (X/Y/Z)
+        // and sits at the negative position on that axis.
+        // Check the object's own position directly — no parent lookup needed.
+        const p = obj.position;
         const neg =
-          (pn === 'X' && p.x < -0.05) ||
-          (pn === 'Y' && p.y < -0.05) ||
-          (pn === 'Z' && p.z < -0.05);
+          (obj.name === 'X' && p.x < -0.05) ||
+          (obj.name === 'Y' && p.y < -0.05) ||
+          (obj.name === 'Z' && p.z < -0.05);
         if (neg) obj.visible = false;
       });
     };
