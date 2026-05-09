@@ -204,24 +204,36 @@ export class ViewerScene {
   // Hide TC translate plane handles and negative-direction arrows
   private _simplifyTranslateGizmo(): void {
     const helper = this.tcT.getHelper();
-    helper.traverse((obj) => {
-      // Plane handles (squares between axes)
-      if (['XY', 'XZ', 'YZ', 'XYZ', 'XYZE'].includes(obj.name)) {
-        obj.visible = false;
-      }
-      // Negative-direction arrows: children of X/Y/Z groups
-      // positioned on the negative side of their axis
-      if (obj.name === 'X' || obj.name === 'Y' || obj.name === 'Z') {
-        obj.children.forEach(child => {
-          const p = (child as THREE.Object3D).position;
-          const neg =
-            (obj.name === 'X' && p.x < -0.05) ||
-            (obj.name === 'Y' && p.y < -0.05) ||
-            (obj.name === 'Z' && p.z < -0.05);
-          if (neg) (child as THREE.Object3D).visible = false;
-        });
-      }
-    });
+
+    // TC resets visibility internally every frame in updateMatrixWorld.
+    // Override it: call original, then re-hide unwanted elements.
+    const HIDE    = new Set(['XY', 'XZ', 'YZ', 'XYZ', 'XYZE']);
+    const orig    = helper.updateMatrixWorld.bind(helper);
+
+    const applyHide = () => {
+      helper.traverse((obj) => {
+        // Plane handles
+        if (HIDE.has(obj.name)) { obj.visible = false; return; }
+
+        // Negative arrows: mesh/line children whose local position is on the negative axis
+        const parent = obj.parent;
+        if (!parent) return;
+        const pn = parent.name;
+        if (pn !== 'X' && pn !== 'Y' && pn !== 'Z') return;
+        const p  = obj.position;
+        const neg =
+          (pn === 'X' && p.x < -0.05) ||
+          (pn === 'Y' && p.y < -0.05) ||
+          (pn === 'Z' && p.z < -0.05);
+        if (neg) obj.visible = false;
+      });
+    };
+
+    // Patch updateMatrixWorld so hiding survives each frame update
+    helper.updateMatrixWorld = (force?: boolean) => {
+      orig(force);
+      applyHide();
+    };
   }
 
   private _bindTC(tc: TransformControls, other: TransformControls) {
