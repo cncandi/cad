@@ -288,10 +288,37 @@ export class ViewerScene {
       if (!this.selId || !this.mat0) return;
       const delta = this.anchor.matrixWorld.clone().multiply(this.mat0.clone().invert());
       const mesh  = this.meshMap.get(this.selId);
-      const p     = mesh ? new THREE.Vector3().setFromMatrixPosition(mesh.matrix) : new THREE.Vector3();
-      const r     = mesh ? new THREE.Euler().setFromRotationMatrix(mesh.matrix)   : new THREE.Euler();
+
+      if (mesh) {
+        // Decompose baked matrix back into position/quaternion/scale
+        // and re-enable matrixAutoUpdate so subsequent operations work correctly
+        const pos = new THREE.Vector3();
+        const quat = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+        mesh.matrix.decompose(pos, quat, scale);
+        mesh.position.copy(pos);
+        mesh.quaternion.copy(quat);
+        mesh.scale.copy(scale);
+        mesh.matrixAutoUpdate = true;
+        mesh.updateMatrix();
+        mesh.updateWorldMatrix(false, true);
+
+        // Sync edges
+        const edges = this.edgeMap.get(this.selId);
+        if (edges) {
+          edges.position.copy(pos);
+          edges.quaternion.copy(quat);
+          edges.scale.copy(scale);
+        }
+      }
+
+      const p = mesh ? mesh.position.clone() : new THREE.Vector3();
+      const r = mesh ? new THREE.Euler().setFromQuaternion(mesh.quaternion) : new THREE.Euler();
       this.cbs.onTransformCommit(this.selId, delta.toArray(), p, r);
       this.mat0 = this.sel0 = null;
+
+      // Snap candidates are now stale – rebuild
+      this.allSnaps = [];
     });
   }
 
