@@ -283,7 +283,7 @@ export class ViewerScene {
       const cz = (triVerts[2]+triVerts[5]+triVerts[8])/3;
       this.gizmo.setPosition(new THREE.Vector3(cx,cy,cz));
     }
-    this.gizmo.showPull(normal);
+    // Pull handle deaktiviert (Sprint 2: Face-Pull via OpenCascade)
     this.cbs.onFaceSelected(bodyId, fi, normal);
   }
 
