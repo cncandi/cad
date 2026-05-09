@@ -48,7 +48,6 @@ export class ViewerScene {
   private selectedStartMatrix: THREE.Matrix4 | null = null;
 
   // ── Pivot reposition ───────────────────────────────────────────────────────
-  private pivotSphere:    THREE.Mesh;       // clickable center hub
   private pivotMode      = false;
   private snapCandidates: SnapPoint[] = [];
   private snapIndicator:  THREE.Mesh;       // shows nearest snap point
@@ -110,18 +109,6 @@ export class ViewerScene {
     this.setupTransformEvents(this.tcTranslate, this.tcRotate);
     this.setupTransformEvents(this.tcRotate,    this.tcTranslate);
 
-    // ── Pivot center sphere (clickable hub) ───────────────────────────────
-    this.pivotSphere = new THREE.Mesh(
-      new THREE.SphereGeometry(0.10, 16, 16),
-      new THREE.MeshStandardMaterial({
-        color: 0xffffff, roughness: 0.1, metalness: 0.6,
-        depthTest: false, transparent: true, opacity: 0.0,
-      }),
-    );
-    this.pivotSphere.renderOrder = 2000;
-    this.pivotSphere.visible = false;
-    this.scene.add(this.pivotSphere);
-
     // ── Snap indicator (shown during pivot mode) ──────────────────────────
     this.snapIndicator = new THREE.Mesh(
       new THREE.SphereGeometry(0.06, 12, 12),
@@ -155,7 +142,7 @@ export class ViewerScene {
       fontWeight: '500', display: 'none', pointerEvents: 'none',
       zIndex: '10',
     });
-    this.pivotLabel.textContent = 'Pivot-Modus: Fangpunkt anklicken · Esc = Abbrechen';
+    this.pivotLabel.textContent = 'P-Modus: Fangpunkt anklicken · Esc = Abbrechen';
     canvas.parentElement?.appendChild(this.pivotLabel);
 
     // ── Events ────────────────────────────────────────────────────────────
@@ -236,8 +223,6 @@ export class ViewerScene {
         +THREE.MathUtils.radToDeg(rot.z).toFixed(2),
       ]);
 
-      // Keep pivot sphere in sync
-      this.pivotSphere.position.copy(this.gizmoTarget.position);
     });
 
     tc.addEventListener('mouseUp', () => {
@@ -250,15 +235,6 @@ export class ViewerScene {
       this.callbacks.onTransformCommit(this.selectedBodyId, delta.toArray(), pos, rot);
       this.dragStartMatrix = this.selectedStartMatrix = null;
     });
-  }
-
-  // ── Pivot sphere scale (constant screen size) ─────────────────────────────
-  private updatePivotSphereScale(): void {
-    if (!this.pivotSphere.visible) return;
-    const dist = this.camera.position.distanceTo(this.pivotSphere.position);
-    const s    = Math.max(0.01, dist * 0.055);
-    this.pivotSphere.scale.setScalar(s);
-    this.snapRing.scale.setScalar(s * 1.1);
   }
 
   // ── Snap candidates ───────────────────────────────────────────────────────
@@ -365,26 +341,17 @@ export class ViewerScene {
 
   // ── Pointer capture handlers ───────────────────────────────────────────────
   private onPointerMoveCapture = (e: PointerEvent): void => {
-    // Pivot sphere hover cursor
-    if (!this.pivotMode && this.pivotSphere.visible) {
-      const rect = this.renderer.domElement.getBoundingClientRect();
-      const ndc  = new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width)  *  2 - 1,
-        -((e.clientY - rect.top)  / rect.height) *  2 + 1,
-      );
-      const rc = new THREE.Raycaster();
-      rc.setFromCamera(ndc, this.camera);
-      const hits = rc.intersectObject(this.pivotSphere, false);
-      this.renderer.domElement.style.cursor = hits.length ? 'grab' : '';
+    // Always show snap indicators when hovering near geometry (selected body)
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const sx   = e.clientX - rect.left;
+    const sy   = e.clientY - rect.top;
+
+    if (this.selectedBodyId && this.snapCandidates.length === 0) {
+      const mesh = this.meshMap.get(this.selectedBodyId);
+      if (mesh) this.snapCandidates = this.buildSnapCandidates(mesh);
     }
 
-    // Snap search during pivot mode
-    if (!this.pivotMode) return;
-
-    const rect  = this.renderer.domElement.getBoundingClientRect();
-    const sx    = e.clientX - rect.left;
-    const sy    = e.clientY - rect.top;
-    const snap  = this.findNearestSnap(sx, sy);
+    const snap = this.selectedBodyId ? this.findNearestSnap(sx, sy) : null;
     this.activeSnap = snap;
 
     const iMat = this.snapIndicator.material as THREE.MeshStandardMaterial;
@@ -394,57 +361,33 @@ export class ViewerScene {
       const col = new THREE.Color(SNAP_COL[snap.type]);
       this.snapIndicator.position.copy(snap.point);
       this.snapRing.position.copy(snap.point);
-      // Orient ring to face camera
       this.snapRing.quaternion.copy(this.camera.quaternion);
-      iMat.color.copy(col);
-      iMat.emissive.copy(col);
-      iMat.opacity = 0.9;
-      rMat.color.copy(col);
-      rMat.opacity = 0.8;
-
-      // Scale constant screen-size
+      iMat.color.copy(col); iMat.emissive.copy(col); iMat.opacity = 0.9;
+      rMat.color.copy(col); rMat.opacity = 0.75;
       const d = this.camera.position.distanceTo(snap.point);
       const s = Math.max(0.01, d * 0.045);
       this.snapIndicator.scale.setScalar(s);
       this.snapRing.scale.setScalar(s * 1.4);
     } else {
-      iMat.opacity = 0.0;
-      rMat.opacity = 0.0;
+      iMat.opacity = 0.0; rMat.opacity = 0.0;
     }
+
+    if (!this.pivotMode) return;
+
   };
 
   private onPointerDownCapture = (e: PointerEvent): void => {
     if (e.button !== 0) return;
 
-    // ── In pivot mode: place gimbal on snap point ─────────────────────────
+    // ── In pivot mode: place gimbal on nearest snap point ────────────────
     if (this.pivotMode) {
       e.stopPropagation();
       if (this.activeSnap) {
-        // Move gizmoTarget WITHOUT moving the body
         this.gizmoTarget.position.copy(this.activeSnap.point);
         this.gizmoTarget.updateMatrixWorld(true);
-        this.pivotSphere.position.copy(this.activeSnap.point);
       }
       this.exitPivotMode();
       return;
-    }
-
-    // ── Check pivot sphere hit → enter pivot mode ─────────────────────────
-    if (this.pivotSphere.visible) {
-      const rect = this.renderer.domElement.getBoundingClientRect();
-      const ndc  = new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width)  *  2 - 1,
-        -((e.clientY - rect.top)  / rect.height) *  2 + 1,
-      );
-      const rc = new THREE.Raycaster();
-      rc.params.Points.threshold = 0.1;
-      rc.setFromCamera(ndc, this.camera);
-      const hits = rc.intersectObject(this.pivotSphere, false);
-      if (hits.length) {
-        e.stopPropagation(); // block TransformControls from seeing this click
-        this.enterPivotMode();
-        return;
-      }
     }
 
     // ── Normal body selection ─────────────────────────────────────────────
@@ -473,6 +416,7 @@ export class ViewerScene {
     }
 
     this.selectedBodyId = bodyId;
+    this.snapCandidates = []; // rebuild on next hover
 
     if (bodyId) {
       const mesh = this.meshMap.get(bodyId);
@@ -485,16 +429,13 @@ export class ViewerScene {
 
         this.tcTranslate.getHelper().visible = true;
         this.tcRotate.getHelper().visible    = true;
-        this.pivotSphere.position.copy(center);
-        this.pivotSphere.visible = true;
-
         const pos = mesh.position;
         this.callbacks.onBodySelected(bodyId, [+pos.x.toFixed(3), +pos.y.toFixed(3), +pos.z.toFixed(3)]);
       }
     } else {
       this.tcTranslate.getHelper().visible = false;
       this.tcRotate.getHelper().visible    = false;
-      this.pivotSphere.visible = false;
+      this.snapCandidates = [];
       if (this.pivotMode) this.exitPivotMode();
       this.callbacks.onBodySelected(null, [0, 0, 0]);
     }
@@ -572,7 +513,6 @@ export class ViewerScene {
   private animate = (): void => {
     this.animFrameId = requestAnimationFrame(this.animate);
     this.orbitControls.update();
-    this.updatePivotSphereScale();
     this.renderer.render(this.scene, this.camera);
   };
 }
