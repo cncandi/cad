@@ -110,7 +110,9 @@ export class ViewerScene {
   }
 
   private _grid() {
-    this.scene.add(Object.assign(new THREE.GridHelper(30, 60, 0xa0a8b8, 0xc0c8d4), { position: { y: -0.01 } } as unknown));
+    const grid = new THREE.GridHelper(30, 60, 0xa0a8b8, 0xc0c8d4);
+    grid.position.y = -0.01;
+    this.scene.add(grid);
     const ax = new THREE.AxesHelper(1.8);
     ax.position.set(-10, 0.02, -8);
     this.scene.add(ax);
